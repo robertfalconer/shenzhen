@@ -6,11 +6,64 @@ require 'faraday_middleware'
 module Shenzhen::Plugins
   module HockeyApp
     class Client
-      HOSTNAME = 'upload.hockeyapp.net'
+      UPLOAD_HOSTNAME = 'upload.hockeyapp.net'
+      UPDATE_HOSTNAME = 'rink.hockeyapp.net'
 
       def initialize(api_token)
         @api_token = api_token
-        @connection = Faraday.new(:url => "https://#{HOSTNAME}") do |builder|
+      end
+
+      def upload_build(ipa, options)
+        response = upload_ipa(ipa, options)
+        options.delete(:ipa)
+        public_identifier = options[:public_identifier] ? options[:public_identifier] : response.body['public_identifier']
+        upload_dsyms(public_identifier, response.body['id'], options)
+      end
+
+      private
+
+      def upload_ipa(ipa, options)
+        options[:ipa] = Faraday::UploadIO.new(ipa, 'application/octet-stream') if ipa and File.exist?(ipa)
+
+        connection(UPLOAD_HOSTNAME).post do |req|
+          if options[:public_identifier].nil?
+            req.url("/api/2/apps/upload")
+          else
+            req.url("/api/2/apps/#{options[:public_identifier]}/app_versions/upload")
+          end
+          req.headers['X-HockeyAppToken'] = @api_token
+          req.body = options
+        end.on_complete do |env|
+          yield env[:status], env[:body] if block_given?
+        end
+      end
+
+      def upload_dsyms(public_identifier, version_number, options)
+        response = nil
+
+        if dsym_filenames = options.delete(:dsym_filenames)
+          dsym_filenames.each do |dsym_filename|
+            response = upload_dsym(dsym_filename, public_identifier, version_number, options)
+          end
+        end
+
+        response
+      end
+
+      def upload_dsym(dsym_filename, public_identifier, version_number, options)
+        options[:dsym] = Faraday::UploadIO.new(dsym_filename, 'application/octet-stream')
+
+        connection(UPDATE_HOSTNAME).put do |req|
+          req.url("/api/2/apps/#{public_identifier}/app_versions/#{version_number}")
+          req.headers['X-HockeyAppToken'] = @api_token
+          req.body = options
+        end.on_complete do |env|
+          yield env[:status], env[:body] if block_given?
+        end
+      end
+
+      def connection(hostname)
+        Faraday.new(:url => "https://#{hostname}") do |builder|
           builder.request :multipart
           builder.request :url_encoded
           builder.response :json, :content_type => /\bjson$/
@@ -19,25 +72,6 @@ module Shenzhen::Plugins
         end
       end
 
-      def upload_build(ipa, options)
-        options[:ipa] = Faraday::UploadIO.new(ipa, 'application/octet-stream') if ipa and File.exist?(ipa)
-
-        if dsym_filename = options.delete(:dsym_filename)
-          options[:dsym] = Faraday::UploadIO.new(dsym_filename, 'application/octet-stream')
-        end
-
-        @connection.post do |req|
-          if options[:public_identifier].nil?
-            req.url("/api/2/apps/upload")
-          else
-            req.url("/api/2/apps/#{options.delete(:public_identifier)}/app_versions/upload")
-          end
-          req.headers['X-HockeyAppToken'] = @api_token
-          req.body = options
-        end.on_complete do |env|
-          yield env[:status], env[:body] if block_given?
-        end
-      end
     end
   end
 end
@@ -47,7 +81,7 @@ command :'distribute:hockeyapp' do |c|
   c.summary = "Distribute an .ipa file over HockeyApp"
   c.description = ""
   c.option '-f', '--file FILE', ".ipa file for the build"
-  c.option '-d', '--dsym FILE', "zipped .dsym package for the build"
+  c.option '-d', '--dsym FILES', Array, "zipped .dsym package for the build"
   c.option '-a', '--token TOKEN', "API Token. Available at https://rink.hockeyapp.net/manage/auth_tokens"
   c.option '-i', '--identifier PUBLIC_IDENTIFIER', "Public identifier of the app you are targeting, if not specified HockeyApp will use the bundle identifier to choose the right"
   c.option '-m', '--notes NOTES', "Release notes for the build (Default: Textile)"
@@ -67,8 +101,8 @@ command :'distribute:hockeyapp' do |c|
     determine_file! unless @file = options.file
     say_warning "Missing or unspecified .ipa file" unless @file and File.exist?(@file)
 
-    determine_dsym! unless @dsym = options.dsym
-    say_warning "Specified dSYM.zip file doesn't exist" if @dsym and !File.exist?(@dsym)
+    determine_dsyms! unless @dsyms = options.dsym
+    say_warning "Specified dSYM.zip files don't exist" if @dsyms and @dsyms.any? { |dsym_file| !File.exist?(dsym_file) }
 
     determine_hockeyapp_api_token! unless @api_token = options.token || ENV['HOCKEYAPP_API_TOKEN']
     say_error "Missing API Token" and abort unless @api_token
@@ -85,7 +119,7 @@ command :'distribute:hockeyapp' do |c|
     parameters[:tags] = options.tags if options.tags
     parameters[:teams] = options.teams if options.teams
     parameters[:users] = options.users if options.users
-    parameters[:dsym_filename] = @dsym if @dsym
+    parameters[:dsym_filenames] = @dsyms if @dsyms
     parameters[:mandatory] = "1" if options.mandatory
     parameters[:release_type] = case options.release
                                 when :beta
