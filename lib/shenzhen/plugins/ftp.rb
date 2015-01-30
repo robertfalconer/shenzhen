@@ -112,7 +112,7 @@ command :'distribute:ftp' do |c|
   c.example '', '$ ipa distribute:ftp --host 127.0.0.1 -f ./file.ipa -u username --path "/path/to/folder/{CFBundleVersion}/" --mkdir'
 
   c.option '-f', '--file FILE', ".ipa file for the build"
-  c.option '-d', '--dsym FILES', Array, "zipped .dsym package for the build"
+  c.option '-d', '--dsym FILES', Array, "Comma separated list of .dSYM.zip packages for the build"
   c.option '-h', '--host HOST', "FTP host"
   c.option '-u', '--user USER', "FTP user"
   c.option '-p', '--password PASS', "FTP password"

@@ -61,7 +61,7 @@ command :'distribute:s3' do |c|
   c.example '', '$ ipa distribute:s3 -f ./file.ipa -a accesskeyid --bucket bucket-name'
 
   c.option '-f', '--file FILE', ".ipa file for the build"
-  c.option '-d', '--dsym FILES', Array, "zipped .dsym package for the build"
+  c.option '-d', '--dsym FILES', Array, "Comma separated list of .dSYM.zip packages for the build"
   c.option '-a', '--access-key-id ACCESS_KEY_ID', "AWS Access Key ID"
   c.option '-s', '--secret-access-key SECRET_ACCESS_KEY', "AWS Secret Access Key"
   c.option '-b', '--bucket BUCKET', "S3 bucket"
