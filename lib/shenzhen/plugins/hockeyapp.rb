@@ -9,14 +9,15 @@ module Shenzhen::Plugins
       UPLOAD_HOSTNAME = 'upload.hockeyapp.net'
       UPDATE_HOSTNAME = 'rink.hockeyapp.net'
 
+      attr_reader :response
+
       def initialize(api_token)
         @api_token = api_token
       end
 
       def upload_build(ipa_file, dsym_files, options)
-        response = upload_ipa(ipa_file, options) if ipa_file
-        response = upload_dsyms(dsym_files, options) if dsym_files and should_continue?(response)
-        response
+        upload_ipa(ipa_file, options) if ipa_file
+        upload_dsyms(dsym_files, options) if dsym_files and should_continue?(@response)
       end
 
       private
@@ -24,27 +25,21 @@ module Shenzhen::Plugins
       def upload_ipa(ipa, options)
         options[:ipa] = Faraday::UploadIO.new(ipa, 'application/octet-stream') if ipa and File.exist?(ipa)
 
-        response = run_request_for_options(options)
+        run_request_for_options(options)
 
         options.delete(:ipa)
-
-        response
       end
 
       def upload_dsyms(dsym_filenames, options)
-        response = nil
-        dsym_filenames.each { |dsym_filename| response = upload_dsym(dsym_filename, options) if should_continue?(response) }
-        response
+        dsym_filenames.each { |dsym_filename| upload_dsym(dsym_filename, options) if should_continue?(@response) }
       end
 
       def upload_dsym(dsym_filename, options)
         options[:dsym] = Faraday::UploadIO.new(dsym_filename, 'application/octet-stream')
 
-        response = run_request_for_options(options)
+        run_request_for_options(options)
 
         options.delete(:dsym)
-
-        response
       end
 
       def process_post_response(response, options)
@@ -63,27 +58,23 @@ module Shenzhen::Plugins
       end
 
       def run_request_for_options(options)
-        response = nil
-
         if options[:public_identifier] and @version_number
-          response = connection(UPDATE_HOSTNAME).put do |req|
+          @response = connection(UPDATE_HOSTNAME).put do |req|
             req.url("api/2/apps/#{options[:public_identifier]}/app_versions/#{@version_number}")
             configure_request(req, options)
           end.on_complete do |env|
             yield env[:status], env[:body] if block_given?
           end
         else
-          response = connection(UPLOAD_HOSTNAME).post do |req|
+          @response = connection(UPLOAD_HOSTNAME).post do |req|
             req.url(options[:public_identifier] ? "api/2/apps/#{options[:public_identifier]}/app_versions/upload" : 'api/2/apps/upload')
             configure_request(req, options)
           end.on_complete do |env|
             yield env[:status], env[:body] if block_given?
           end
 
-          process_post_response(response, options)
+          process_post_response(@response, options)
         end
-
-        response
       end
 
       def configure_request(request, options)
@@ -153,11 +144,11 @@ command :'distribute:hockeyapp' do |c|
     parameters[:repository_url] = options.repository_url if options.repository_url
 
     client = Shenzhen::Plugins::HockeyApp::Client.new(@api_token)
-    response = client.upload_build(@file, @dsyms, parameters)
-    if response_ok?(response)
+    client.upload_build(@file, @dsyms, parameters)
+    if response_ok?(client.response)
       say_ok "Version files successfully uploaded to HockeyApp: #{@file} #{@dsyms}"
     else
-      say_error "Error uploading to HockeyApp: #{response.body}"
+      say_error "Error uploading to HockeyApp: #{client.response.body}"
     end
   end
 
