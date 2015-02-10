@@ -27,6 +27,8 @@ module Shenzhen::Plugins
 
         run_request_for_options(options)
 
+        sleep(2.seconds)
+
         options.delete(:ipa)
       end
 
@@ -38,6 +40,8 @@ module Shenzhen::Plugins
         options[:dsym] = Faraday::UploadIO.new(dsym_filename, 'application/octet-stream')
 
         run_request_for_options(options)
+
+        sleep(2.seconds)
 
         options.delete(:dsym)
       end
