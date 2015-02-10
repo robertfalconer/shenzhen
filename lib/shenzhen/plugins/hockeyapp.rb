@@ -70,7 +70,7 @@ module Shenzhen::Plugins
             yield env[:status], env[:body] if block_given?
           end
         else
-          @response = connection(UPDATE_HOSTNAME).post do |req|
+          @response = connection(UPLOAD_HOSTNAME).post do |req|
             req.url(options[:public_identifier] ? "api/2/apps/#{options[:public_identifier]}/app_versions/upload" : 'api/2/apps/upload')
             configure_request(req, options)
           end.on_complete do |env|
