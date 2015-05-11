@@ -1,5 +1,3 @@
-alias_command :distribute, :'distribute:testflight'
-
 private
 
 def determine_file!
